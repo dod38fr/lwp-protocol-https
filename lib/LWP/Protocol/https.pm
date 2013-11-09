@@ -46,7 +46,7 @@ EOT
 	}
     }
     $self->{ssl_opts} = \%ssl_opts;
-    return (%ssl_opts, $self->SUPER::_extra_sock_opts);
+    return (%ssl_opts, UA => $self->{ua}, $self->SUPER::_extra_sock_opts);
 }
 
 sub _check_sock
@@ -88,6 +88,27 @@ package LWP::Protocol::https::Socket;
 
 require Net::HTTPS;
 our @ISA = qw(Net::HTTPS LWP::Protocol::http::SocketMethods);
+
+sub new
+{
+    my $self = shift();
+    my $arg_hash = { @_ };
+
+    my $proxy = delete $arg_hash->{ConnectProxy};
+    my $ua = delete $arg_hash->{UA};
+
+    if ($proxy) {
+	my $uri = $proxy->clone;
+	$uri->path($arg_hash->{PeerAddr}.':'.$arg_hash->{PeerPort});
+	my $response = $ua->request(HTTP::Request->new('CONNECT', $uri));
+
+	return $self->error($response->status_line) if $response->is_error;
+	eval { $response->{client_socket}->blocking(1); };
+	return $self->start_SSL($response->{client_socket}, $arg_hash);
+    }
+
+    return $self->SUPER::new(%$arg_hash);
+}
 
 1;
 
